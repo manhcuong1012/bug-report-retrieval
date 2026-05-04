@@ -1,0 +1,31 @@
+{
+  "bucket_output": "data\\bucket_map.json",
+  "field_mapping": {
+    "bucket_id": "union-find over dup_id with canonical minimum bug_id",
+    "component": "component",
+    "created_at": "creation_ts",
+    "description": "description",
+    "priority": "priority",
+    "severity": "bug_severity",
+    "summary": "short_desc"
+  },
+  "input_path": "data\\raw\\mozilla.json",
+  "num_buckets": 173398,
+  "num_duplicate_buckets": 10702,
+  "num_duplicate_records": 30891,
+  "num_records": 193587,
+  "processed_output": "data\\processed\\processed_bugs.jsonl",
+  "schema_fields": [
+    "bug_id",
+    "project",
+    "created_at",
+    "summary",
+    "description",
+    "component",
+    "priority",
+    "severity",
+    "bucket_id",
+    "text_raw",
+    "text_clean"
+  ]
+}

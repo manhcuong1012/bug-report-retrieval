@@ -1,0 +1,12 @@
+{
+  "dropped_test_count": 37127,
+  "input_was_sorted": true,
+  "records_path": "data\\processed\\processed_bugs.jsonl",
+  "split_index": 154869,
+  "test_count": 1591,
+  "test_output": "data\\test.jsonl",
+  "total_records": 193587,
+  "train_count": 154869,
+  "train_output": "data\\train.jsonl",
+  "train_ratio": 0.8
+}
