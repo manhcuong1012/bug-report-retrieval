@@ -203,7 +203,7 @@ def main():
 
     # ── Load records ──────────────────────────────────────────────────────
     train_records = load_train_records(train_records_path)
-    bug_ids = [r["bug_id"] for r in train_records]
+    bug_ids = [str(r["bug_id"]) for r in train_records]
 
     # ── Encode ────────────────────────────────────────────────────────────
     print(f"\n[encode] Building semantic texts (max_desc={args.max_description_chars}) ...")
