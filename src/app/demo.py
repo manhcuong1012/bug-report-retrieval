@@ -19,6 +19,7 @@ if str(SRC_DIR) not in sys.path:
 
 from retrieval.bug_feature_scorer import precompute_bug, score_pair, build_query_profile
 from retrieval.reranker import fuse_scores, rank_candidates
+from preprocessing.clean_text import build_retrieval_text
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S %z"
 MULTISPACE_RE = re.compile(r"\s+")
@@ -27,6 +28,9 @@ NON_TEXT_RE = re.compile(r"[^a-z0-9._/#\-\+\s]")
 TRAIN_PATH = ROOT_DIR / "data" / "train.jsonl"
 TEST_PATH = ROOT_DIR / "data" / "test.jsonl"
 DEMO_CACHE = ROOT_DIR / "reports" / "cache" / "demo_cache.pkl"
+BM25_SUMMARY_REPEAT = 5
+BM25_K1 = 2.0
+BM25_B = 0.5
 
 
 def normalize_text(text: str) -> str:
@@ -36,6 +40,20 @@ def normalize_text(text: str) -> str:
 def build_weighted_text(summary: str, description: str, summary_repeat: int = 3) -> str:
     repeated = " ".join([summary] * max(summary_repeat, 1))
     return normalize_text(f"{repeated} {description}".strip())
+
+
+def build_demo_retrieval_text(record: dict) -> str:
+    return build_retrieval_text(
+        record.get("summary", ""),
+        record.get("description", ""),
+        component=record.get("component", ""),
+        priority=record.get("priority", ""),
+        severity=record.get("severity", ""),
+        summary_repeat=BM25_SUMMARY_REPEAT,
+        component_repeat=1,
+        priority_repeat=1,
+        severity_repeat=1,
+    )
 
 
 def iter_jsonl(path: Path):
@@ -74,8 +92,8 @@ def load_test_records():
     return list(iter_jsonl(TEST_PATH))
 
 
-def compute_bm25(query_summary, query_description, postings, df, doc_lengths, num_docs, avgdl, candidate_depth, k1=1.5, b=0.75):
-    tokens = build_weighted_text(query_summary, query_description).split()
+def compute_bm25(query_record, postings, df, doc_lengths, num_docs, avgdl, candidate_depth, k1=BM25_K1, b=BM25_B):
+    tokens = build_demo_retrieval_text(query_record).split()
     query_terms = Counter(tokens)
     scores: dict[str, float] = defaultdict(float)
     for term in query_terms:
@@ -203,8 +221,7 @@ def main():
 
     with st.spinner("BM25 pre-filtering..."):
         bm25_all_scores, bm25_ranked = compute_bm25(
-            query_record.get("summary", ""),
-            query_record.get("description", ""),
+            query_record,
             postings, df, doc_lengths, num_docs, avgdl,
             candidate_depth,
         )

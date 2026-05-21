@@ -16,6 +16,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from retrieval.bug_feature_scorer import precompute_bug
+from preprocessing.clean_text import build_retrieval_text
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S %z"
 MULTISPACE_RE = re.compile(r"\s+")
@@ -23,6 +24,8 @@ NON_TEXT_RE = re.compile(r"[^a-z0-9._/#\-\+\s]")
 
 TRAIN_PATH = ROOT_DIR / "data" / "train.jsonl"
 CACHE_DIR = ROOT_DIR / "reports" / "cache"
+BM25_SUMMARY_REPEAT = 5
+BM25_MAX_DF_RATIO = 0.10
 
 
 def normalize_text(text: str) -> str:
@@ -32,6 +35,20 @@ def normalize_text(text: str) -> str:
 def build_weighted_text(summary: str, description: str, summary_repeat: int = 3) -> str:
     repeated = " ".join([summary] * max(summary_repeat, 1))
     return normalize_text(f"{repeated} {description}".strip())
+
+
+def build_demo_retrieval_text(record: dict) -> str:
+    return build_retrieval_text(
+        record.get("summary", ""),
+        record.get("description", ""),
+        component=record.get("component", ""),
+        priority=record.get("priority", ""),
+        severity=record.get("severity", ""),
+        summary_repeat=BM25_SUMMARY_REPEAT,
+        component_repeat=1,
+        priority_repeat=1,
+        severity_repeat=1,
+    )
 
 
 def iter_jsonl(path: Path):
@@ -60,13 +77,19 @@ def main():
     for record in train_records:
         num_docs += 1
         doc_id = record["bug_id"]
-        tokens = build_weighted_text(record.get("summary", ""), record.get("description", "")).split()
+        tokens = build_demo_retrieval_text(record).split()
         tf = Counter(tokens)
         doc_lengths[doc_id] = len(tokens)
         doc_timestamps[doc_id] = datetime.strptime(record["created_at"], TIMESTAMP_FORMAT).timestamp()
         for term, raw_tf in tf.items():
             postings[term].append((doc_id, raw_tf))
             df[term] += 1
+
+    max_df = num_docs * BM25_MAX_DF_RATIO
+    for term in list(df):
+        if df[term] > max_df:
+            del df[term]
+            postings.pop(term, None)
 
     avgdl = sum(doc_lengths.values()) / num_docs if num_docs else 0.0
     print(f"  {num_docs:,} docs, {len(postings):,} terms")

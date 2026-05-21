@@ -46,6 +46,9 @@ DEFAULT_CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-12-v2"
 DEFAULT_BM25_INDEX = "reports/cache/bm25_index.pkl"
 DEFAULT_FAISS_INDEX = "reports/cache/faiss_index"
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -204,11 +207,20 @@ def bm25_top_candidates(
     num_docs: int,
     avgdl: float,
     summary_repeat: int,
+    component_repeat: int,
+    priority_repeat: int,
+    severity_repeat: int,
     k1: float,
     b: float,
     depth: int,
 ) -> list[tuple[str, float]]:
-    query_tokens = record_tokens(query_record, summary_repeat=summary_repeat)
+    query_tokens = record_tokens(
+        query_record,
+        summary_repeat=summary_repeat,
+        component_repeat=component_repeat,
+        priority_repeat=priority_repeat,
+        severity_repeat=severity_repeat,
+    )
     query_terms = Counter(query_tokens)
     query_ts = parse_timestamp(query_record["created_at"])
 
@@ -368,11 +380,16 @@ def retrieve(
     retrieval_depth: int = 100,
     batch_size: int = 64,
     max_description_chars: int = 1000,
-    summary_repeat: int = 3,
+    summary_repeat: int = 5,
+    component_repeat: int = 1,
+    priority_repeat: int = 1,
+    severity_repeat: int = 1,
+    max_term_df_ratio: float | None = 0.1,
+    max_metadata_df_ratio: float | None = 0.1,
     bm25_weight: float = 0.35,
     dense_weight: float = 0.65,
-    k1: float = 1.5,
-    b: float = 0.75,
+    k1: float = 2.0,
+    b: float = 0.5,
     max_test_queries: int = 0,
     device: str = "auto",
 ) -> dict[str, Any]:
@@ -390,6 +407,7 @@ def retrieve(
     doc_timestamps: dict[str, float] = bm25["doc_timestamps"]
     num_docs: int = bm25["num_docs"]
     avgdl: float = bm25["avgdl"]
+    bm25_index_config: dict[str, Any] = bm25.get("config", {})
 
     faiss_index, faiss_bug_ids, np = load_faiss_index(faiss_index_path)
 
@@ -425,6 +443,9 @@ def retrieve(
                 num_docs=num_docs,
                 avgdl=avgdl,
                 summary_repeat=summary_repeat,
+                component_repeat=component_repeat,
+                priority_repeat=priority_repeat,
+                severity_repeat=severity_repeat,
                 k1=k1,
                 b=b,
                 depth=bm25_prefilter_depth,
@@ -509,6 +530,12 @@ def retrieve(
         "batch_size": batch_size,
         "max_description_chars": max_description_chars,
         "summary_repeat": summary_repeat,
+        "component_repeat": component_repeat,
+        "priority_repeat": priority_repeat,
+        "severity_repeat": severity_repeat,
+        "max_term_df_ratio": max_term_df_ratio,
+        "max_metadata_df_ratio": max_metadata_df_ratio,
+        "bm25_index_config": bm25_index_config,
         "num_queries": total_queries,
         "avg_stage1_candidates": avg_stage1,
         "device": resolved_device,
@@ -541,11 +568,16 @@ def main() -> None:
     parser.add_argument("--retrieval-depth", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--max-description-chars", type=int, default=1000)
-    parser.add_argument("--summary-repeat", type=int, default=3)
+    parser.add_argument("--summary-repeat", type=int, default=5)
+    parser.add_argument("--component-repeat", type=int, default=1)
+    parser.add_argument("--priority-repeat", type=int, default=1)
+    parser.add_argument("--severity-repeat", type=int, default=1)
+    parser.add_argument("--max-term-df-ratio", type=float, default=0.1)
+    parser.add_argument("--max-metadata-df-ratio", type=float, default=0.1)
     parser.add_argument("--bm25-weight", type=float, default=0.35)
     parser.add_argument("--dense-weight", type=float, default=0.65)
-    parser.add_argument("--k1", type=float, default=1.5)
-    parser.add_argument("--b", type=float, default=0.75)
+    parser.add_argument("--k1", type=float, default=2.0)
+    parser.add_argument("--b", type=float, default=0.5)
     parser.add_argument("--max-test-queries", type=int, default=0, help="0 = chạy hết")
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "mps", "cuda"])
     args = parser.parse_args()
@@ -566,6 +598,11 @@ def main() -> None:
         batch_size=args.batch_size,
         max_description_chars=args.max_description_chars,
         summary_repeat=args.summary_repeat,
+        component_repeat=args.component_repeat,
+        priority_repeat=args.priority_repeat,
+        severity_repeat=args.severity_repeat,
+        max_term_df_ratio=args.max_term_df_ratio,
+        max_metadata_df_ratio=args.max_metadata_df_ratio,
         bm25_weight=args.bm25_weight,
         dense_weight=args.dense_weight,
         k1=args.k1,

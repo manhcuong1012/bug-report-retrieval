@@ -15,9 +15,10 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from eval.metrics import evaluate as evaluate_predictions  # type: ignore
-from preprocessing.clean_text import build_weighted_text  # type: ignore
+from preprocessing.clean_text import build_retrieval_text, normalize_text  # type: ignore
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S %z"
+METADATA_PREFIXES = ("component.", "priority.", "severity.")
 
 
 def parse_timestamp(value: str) -> datetime:
@@ -38,24 +39,64 @@ def write_json(path: Path, payload: Any) -> None:
         json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
 
 
+def is_metadata_term(term: str) -> bool:
+    return term.startswith(METADATA_PREFIXES)
+
+
+def should_prune_term(
+    term: str,
+    document_frequency: int,
+    num_docs: int,
+    max_term_df_ratio: float | None,
+    max_metadata_df_ratio: float | None,
+) -> bool:
+    if max_term_df_ratio is not None and document_frequency > num_docs * max_term_df_ratio:
+        return True
+    return (
+        max_metadata_df_ratio is not None
+        and is_metadata_term(term)
+        and document_frequency > num_docs * max_metadata_df_ratio
+    )
+
+
 def tokenize(text: str) -> list[str]:
-    return [token for token in build_weighted_text(text, "", 1).split(" ") if token]
+    return [token for token in normalize_text(text).split(" ") if token]
 
 
-def record_tokens(record: dict[str, str], summary_repeat: int = 3) -> list[str]:
-    weighted_text = build_weighted_text(
+def record_tokens(
+    record: dict[str, str],
+    summary_repeat: int = 3,
+    component_repeat: int = 1,
+    priority_repeat: int = 1,
+    severity_repeat: int = 1,
+) -> list[str]:
+    retrieval_text = build_retrieval_text(
         record.get("summary", ""),
         record.get("description", ""),
+        component=record.get("component", ""),
+        priority=record.get("priority", ""),
+        severity=record.get("severity", ""),
         summary_repeat=summary_repeat,
+        component_repeat=component_repeat,
+        priority_repeat=priority_repeat,
+        severity_repeat=severity_repeat,
     )
-    return [token for token in weighted_text.split(" ") if token]
+    return [token for token in retrieval_text.split(" ") if token]
 
 
 def compute_idf(document_frequency: int, num_docs: int) -> float:
     return math.log((num_docs + 1.0) / (document_frequency + 1.0)) + 1.0
 
 
-def build_index(train_records_path: Path, summary_repeat: int = 3):
+def build_index(
+    train_records_path: Path,
+    summary_repeat: int = 3,
+    component_repeat: int = 1,
+    priority_repeat: int = 1,
+    severity_repeat: int = 1,
+    max_term_df_ratio: float | None = None,
+    max_metadata_df_ratio: float | None = 0.1,
+):
     postings: dict[str, list[tuple[str, float]]] = defaultdict(list)
     document_frequency: Counter[str] = Counter()
     doc_norms: dict[str, float] = {}
@@ -69,13 +110,29 @@ def build_index(train_records_path: Path, summary_repeat: int = 3):
     for record in iter_jsonl(train_records_path):
         num_docs += 1
         doc_id = record["bug_id"]
-        tokens = record_tokens(record, summary_repeat=summary_repeat)
+        tokens = record_tokens(
+            record,
+            summary_repeat=summary_repeat,
+            component_repeat=component_repeat,
+            priority_repeat=priority_repeat,
+            severity_repeat=severity_repeat,
+        )
         tf = Counter(tokens)
         doc_term_counts[doc_id] = tf
         doc_timestamps[doc_id] = parse_timestamp(record["created_at"]).timestamp()
         doc_bucket_ids[doc_id] = record["bucket_id"]
         for term in tf:
             document_frequency[term] += 1
+
+    for term in list(document_frequency):
+        if should_prune_term(
+            term,
+            document_frequency[term],
+            num_docs,
+            max_term_df_ratio=max_term_df_ratio,
+            max_metadata_df_ratio=max_metadata_df_ratio,
+        ):
+            del document_frequency[term]
 
     for term, df in document_frequency.items():
         idf[term] = compute_idf(df, num_docs)
@@ -112,15 +169,32 @@ def retrieve(
     metrics_output: Path,
     top_k: int = 10,
     summary_repeat: int = 3,
+    component_repeat: int = 1,
+    priority_repeat: int = 1,
+    severity_repeat: int = 1,
+    max_term_df_ratio: float | None = None,
+    max_metadata_df_ratio: float | None = 0.1,
 ) -> dict[str, Any]:
     postings, idf, doc_norms, doc_timestamps, _doc_bucket_ids = build_index(
-        train_records_path, summary_repeat=summary_repeat
+        train_records_path,
+        summary_repeat=summary_repeat,
+        component_repeat=component_repeat,
+        priority_repeat=priority_repeat,
+        severity_repeat=severity_repeat,
+        max_term_df_ratio=max_term_df_ratio,
+        max_metadata_df_ratio=max_metadata_df_ratio,
     )
 
     predictions_output.parent.mkdir(parents=True, exist_ok=True)
     with predictions_output.open("w", encoding="utf-8") as handle:
         for record in iter_jsonl(test_records_path):
-            query_tokens = record_tokens(record, summary_repeat=summary_repeat)
+            query_tokens = record_tokens(
+                record,
+                summary_repeat=summary_repeat,
+                component_repeat=component_repeat,
+                priority_repeat=priority_repeat,
+                severity_repeat=severity_repeat,
+            )
             query_vector, query_norm = vectorize_query(query_tokens, idf)
             query_timestamp = parse_timestamp(record["created_at"]).timestamp()
 
@@ -161,7 +235,18 @@ def retrieve(
             handle.write(json.dumps(prediction, ensure_ascii=False) + "\n")
 
     metrics = evaluate_predictions(predictions_output, train_records_path)
-    metrics.update({"method": "tfidf", "top_k": top_k, "summary_repeat": summary_repeat})
+    metrics.update(
+        {
+            "method": "tfidf",
+            "top_k": top_k,
+            "summary_repeat": summary_repeat,
+            "component_repeat": component_repeat,
+            "priority_repeat": priority_repeat,
+            "severity_repeat": severity_repeat,
+            "max_term_df_ratio": max_term_df_ratio,
+            "max_metadata_df_ratio": max_metadata_df_ratio,
+        }
+    )
     write_json(metrics_output, metrics)
     return metrics
 
@@ -174,6 +259,11 @@ def main() -> None:
     parser.add_argument("--metrics-output", default="reports/tfidf_metrics.json")
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--summary-repeat", type=int, default=3)
+    parser.add_argument("--component-repeat", type=int, default=1)
+    parser.add_argument("--priority-repeat", type=int, default=1)
+    parser.add_argument("--severity-repeat", type=int, default=1)
+    parser.add_argument("--max-term-df-ratio", type=float, default=None)
+    parser.add_argument("--max-metadata-df-ratio", type=float, default=0.1)
     args = parser.parse_args()
 
     metrics = retrieve(
@@ -183,6 +273,11 @@ def main() -> None:
         metrics_output=Path(args.metrics_output),
         top_k=args.top_k,
         summary_repeat=args.summary_repeat,
+        component_repeat=args.component_repeat,
+        priority_repeat=args.priority_repeat,
+        severity_repeat=args.severity_repeat,
+        max_term_df_ratio=args.max_term_df_ratio,
+        max_metadata_df_ratio=args.max_metadata_df_ratio,
     )
     print(json.dumps(metrics, ensure_ascii=False, indent=2))
 

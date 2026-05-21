@@ -1,10 +1,11 @@
 {
-  "MRR": 0.2733892530404158,
+  "MRR": 0.2756661977592208,
   "Recall@1": 0.20867379006913891,
   "Recall@10": 0.42928975487115023,
-  "Recall@5": 0.3563796354494029,
-  "max_candidates": 5000,
-  "method": "feature_based",
+  "Recall@5": 0.3620364550597109,
   "num_queries": 1591,
+  "ranking_unit": "duplicate_bucket",
+  "method": "feature_based",
+  "max_candidates": 5000,
   "top_k": 10
 }

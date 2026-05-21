@@ -1,12 +1,19 @@
 {
-  "MRR": 0.27634736064968624,
-  "Recall@1": 0.213073538654934,
-  "Recall@10": 0.426147077309868,
-  "Recall@5": 0.3519798868636078,
-  "b": 0.75,
-  "k1": 1.5,
-  "method": "bm25",
   "num_queries": 1591,
-  "summary_repeat": 3,
-  "top_k": 10
+  "Recall@1": 0.245757385292269,
+  "Recall@5": 0.4198617221873036,
+  "Recall@10": 0.5091137649277184,
+  "MRR": 0.32234219269102987,
+  "ranking_unit": "duplicate_bucket",
+  "method": "bm25",
+  "top_k": 10,
+  "summary_repeat": 5,
+  "component_repeat": 1,
+  "priority_repeat": 1,
+  "severity_repeat": 1,
+  "max_term_df_ratio": 0.1,
+  "max_metadata_df_ratio": 0.1,
+  "k1": 2.0,
+  "b": 0.5,
+  "engine": "sparse_tuning"
 }

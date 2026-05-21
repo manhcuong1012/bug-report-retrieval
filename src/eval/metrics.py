@@ -27,9 +27,26 @@ def train_bucket_lookup(train_records_path: Path) -> dict[str, str]:
     return lookup
 
 
+def ranked_unique_buckets(
+    ranked_bug_ids: list[str],
+    bugid_to_bucket: dict[str, str],
+) -> list[str | None]:
+    """Map ranked bug ids to a ranked list of unique duplicate buckets."""
+    ranked_buckets: list[str | None] = []
+    seen: set[str] = set()
+    for bug_id in ranked_bug_ids:
+        bucket_id = bugid_to_bucket.get(bug_id)
+        bucket_key = bucket_id if bucket_id is not None else f"unknown:{bug_id}"
+        if bucket_key in seen:
+            continue
+        seen.add(bucket_key)
+        ranked_buckets.append(bucket_id)
+    return ranked_buckets
+
+
 def hit_at_k(query_bucket: str, ranked_bug_ids: list[str], bugid_to_bucket: dict[str, str], k: int) -> float:
-    for bug_id in ranked_bug_ids[:k]:
-        if bugid_to_bucket.get(bug_id) == query_bucket:
+    for bucket_id in ranked_unique_buckets(ranked_bug_ids, bugid_to_bucket)[:k]:
+        if bucket_id == query_bucket:
             return 1.0
     return 0.0
 
@@ -37,8 +54,11 @@ def hit_at_k(query_bucket: str, ranked_bug_ids: list[str], bugid_to_bucket: dict
 def reciprocal_rank(
     query_bucket: str, ranked_bug_ids: list[str], bugid_to_bucket: dict[str, str]
 ) -> float:
-    for rank, bug_id in enumerate(ranked_bug_ids, start=1):
-        if bugid_to_bucket.get(bug_id) == query_bucket:
+    for rank, bucket_id in enumerate(
+        ranked_unique_buckets(ranked_bug_ids, bugid_to_bucket),
+        start=1,
+    ):
+        if bucket_id == query_bucket:
             return 1.0 / rank
     return 0.0
 
@@ -68,6 +88,7 @@ def evaluate(predictions_path: Path, train_records_path: Path) -> dict[str, Any]
         "Recall@5": recall_at_5 / divisor,
         "Recall@10": recall_at_10 / divisor,
         "MRR": mrr / divisor,
+        "ranking_unit": "duplicate_bucket",
     }
 
 

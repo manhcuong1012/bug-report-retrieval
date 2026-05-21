@@ -1,10 +1,11 @@
 {
-  "MRR": 0.2059087326529187,
+  "MRR": 0.20668043458741134,
   "Recall@1": 0.15461973601508486,
   "Recall@10": 0.32935260842237585,
-  "Recall@5": 0.26964173475801384,
-  "method": "tfidf",
+  "Recall@5": 0.27467001885606535,
   "num_queries": 1591,
+  "ranking_unit": "duplicate_bucket",
+  "method": "tfidf",
   "summary_repeat": 3,
   "top_k": 10
 }

@@ -51,10 +51,19 @@ def compute_bm25_scores(
     num_docs: int,
     avgdl: float,
     summary_repeat: int,
+    component_repeat: int,
+    priority_repeat: int,
+    severity_repeat: int,
     k1: float,
     b: float,
 ) -> dict[str, float]:
-    query_tokens = record_tokens(query_record, summary_repeat=summary_repeat)
+    query_tokens = record_tokens(
+        query_record,
+        summary_repeat=summary_repeat,
+        component_repeat=component_repeat,
+        priority_repeat=priority_repeat,
+        severity_repeat=severity_repeat,
+    )
     query_terms = Counter(query_tokens)
     query_timestamp = parse_timestamp(query_record["created_at"]).timestamp()
 
@@ -102,9 +111,14 @@ def retrieve(
     metrics_output: Path,
     top_k: int = 10,
     rerank_depth: int = 300,
-    summary_repeat: int = 3,
-    k1: float = 1.5,
-    b: float = 0.75,
+    summary_repeat: int = 5,
+    component_repeat: int = 1,
+    priority_repeat: int = 1,
+    severity_repeat: int = 1,
+    max_term_df_ratio: float | None = 0.1,
+    max_metadata_df_ratio: float | None = 0.1,
+    k1: float = 2.0,
+    b: float = 0.5,
     alpha: float = 0.6,
     beta: float = 0.4,
     use_rank_normalization: bool = False,
@@ -114,6 +128,11 @@ def retrieve(
     postings, df, doc_lengths, doc_timestamps, num_docs, avgdl = build_bm25_index(
         train_records_path,
         summary_repeat=summary_repeat,
+        component_repeat=component_repeat,
+        priority_repeat=priority_repeat,
+        severity_repeat=severity_repeat,
+        max_term_df_ratio=max_term_df_ratio,
+        max_metadata_df_ratio=max_metadata_df_ratio,
     )
     candidate_records_raw = {
         record["bug_id"]: record
@@ -141,6 +160,9 @@ def retrieve(
                 num_docs,
                 avgdl,
                 summary_repeat,
+                component_repeat,
+                priority_repeat,
+                severity_repeat,
                 k1,
                 b,
             )
@@ -228,6 +250,11 @@ def retrieve(
             "top_k": top_k,
             "rerank_depth": rerank_depth,
             "summary_repeat": summary_repeat,
+            "component_repeat": component_repeat,
+            "priority_repeat": priority_repeat,
+            "severity_repeat": severity_repeat,
+            "max_term_df_ratio": max_term_df_ratio,
+            "max_metadata_df_ratio": max_metadata_df_ratio,
             "k1": k1,
             "b": b,
             "alpha": alpha,
@@ -253,9 +280,14 @@ def main() -> None:
     parser.add_argument("--metrics-output", default="reports/hybrid_metrics.json")
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--rerank-depth", type=int, default=300)
-    parser.add_argument("--summary-repeat", type=int, default=3)
-    parser.add_argument("--k1", type=float, default=1.5)
-    parser.add_argument("--b", type=float, default=0.75)
+    parser.add_argument("--summary-repeat", type=int, default=5)
+    parser.add_argument("--component-repeat", type=int, default=1)
+    parser.add_argument("--priority-repeat", type=int, default=1)
+    parser.add_argument("--severity-repeat", type=int, default=1)
+    parser.add_argument("--max-term-df-ratio", type=float, default=0.1)
+    parser.add_argument("--max-metadata-df-ratio", type=float, default=0.1)
+    parser.add_argument("--k1", type=float, default=2.0)
+    parser.add_argument("--b", type=float, default=0.5)
     parser.add_argument("--alpha", type=float, default=0.6)
     parser.add_argument("--beta", type=float, default=0.4)
     parser.add_argument("--rank-normalization", action="store_true")
@@ -271,6 +303,11 @@ def main() -> None:
         top_k=args.top_k,
         rerank_depth=args.rerank_depth,
         summary_repeat=args.summary_repeat,
+        component_repeat=args.component_repeat,
+        priority_repeat=args.priority_repeat,
+        severity_repeat=args.severity_repeat,
+        max_term_df_ratio=args.max_term_df_ratio,
+        max_metadata_df_ratio=args.max_metadata_df_ratio,
         k1=args.k1,
         b=args.b,
         alpha=args.alpha,
